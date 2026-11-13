@@ -15,7 +15,10 @@ import streamlit as st
 from model import EVALUATION_QUERIES, build_model, compare_methods, k_selection, prepare, stability
 
 st.set_page_config(page_title="Cancer Trial Finder", page_icon="🔬", layout="wide")
-DATA_PATH = Path(__file__).parent / "data" / "cancer_trials_10000.csv"
+DATA_DIR = Path(__file__).parent / "data"
+# Prefer the compressed copy (GitHub web upload limit is 25 MB); fall back to the plain CSV.
+DATA_PATH = next((p for p in [DATA_DIR / "cancer_trials_10000.csv.gz", DATA_DIR / "cancer_trials_10000.csv"]
+                  if p.exists()), DATA_DIR / "cancer_trials_10000.csv.gz")
 
 st.markdown("""
 <style>
@@ -69,7 +72,7 @@ with st.sidebar:
 
 file_bytes = uploaded.getvalue() if uploaded else None
 if file_bytes is None and not DATA_PATH.exists():
-    st.error(f"Put cancer_trials_10000.csv in {DATA_PATH.parent} or upload one in the sidebar.")
+    st.error(f"Put cancer_trials_10000.csv.gz (or .csv) in {DATA_PATH.parent} or upload one in the sidebar.")
     st.stop()
 
 model, prep_log = get_model(file_bytes, k, svd_components)
