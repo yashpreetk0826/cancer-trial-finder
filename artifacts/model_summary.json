@@ -1,0 +1,61 @@
+{
+  "svd_dimensions": 100,
+  "k": 6,
+  "explained_variance": 0.23763729631900787,
+  "records": {
+    "prepared": 7921,
+    "train": 6336,
+    "test": 1585,
+    "inner_train": 4752,
+    "validation": 1584
+  },
+  "preparation_log": [
+    [
+      "Raw records",
+      10000
+    ],
+    [
+      "Valid NCT ID, deduplicated",
+      10000
+    ],
+    [
+      "Interventional only",
+      7921
+    ],
+    [
+      "Model-ready (text \u2265 25 characters)",
+      7921
+    ],
+    [
+      "Recruiting (default search pool)",
+      1188
+    ],
+    [
+      "Not yet recruiting",
+      402
+    ]
+  ],
+  "validation": {
+    "top10_coverage": 0.8916666666666667,
+    "candidate_fraction": 0.6398678414096917,
+    "silhouette": 0.062299005687236786,
+    "selection_score": 0.6337938503385486
+  },
+  "held_out_test": {
+    "train_silhouette": 0.05084063112735748,
+    "test_silhouette": 0.05404685065150261,
+    "top10_coverage": 0.7916666666666666,
+    "candidate_fraction": 0.6689814814814815
+  },
+  "thresholds": {
+    "coverage_min": 0.95,
+    "candidate_fraction_max": 0.7
+  },
+  "search_mode": "full_cosine",
+  "configuration_source": "presented",
+  "rule_choice_on_this_snapshot": {
+    "svd_dimensions": 100,
+    "k": 5
+  },
+  "tfidf_features": 8000
+}
