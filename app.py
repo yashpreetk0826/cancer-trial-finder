@@ -114,11 +114,9 @@ HT = summary["held_out_test"]
 with st.sidebar:
     st.markdown("### 🏥 Cancer Trial Discovery")
     st.caption("For hospital clinical research teams")
-    page = st.radio("Go to", ["Trial search", "Exploratory clusters", "Model evaluation",
-                              "Data and preparation", "About and limitations"], label_visibility="collapsed")
+    page = st.radio("Go to", ["Trial search", "Exploratory clusters", "About and limitations"],
+                    label_visibility="collapsed")
     st.divider()
-    st.markdown(f"**Model:** TF-IDF → SVD {summary['svd_dimensions']}D → K-means K={summary['k']}")
-    st.markdown(f"**Adopted search:** `{MODE}`")
     st.caption("Data: ClinicalTrials.gov API v2 snapshot (historical). Recheck status in the live registry.")
 
 
@@ -279,127 +277,7 @@ elif page == "Exploratory clusters":
 
 
 # ----------------------------------------------------------------------------------------
-# Page 3 — Model evaluation
-# ----------------------------------------------------------------------------------------
-elif page == "Model evaluation":
-    st.title("Model selection and evaluation")
-    r = summary["records"]
-    st.markdown(f"TF-IDF ({summary['tfidf_features']:,} features) → Truncated SVD + Normalizer → K-means. "
-                f"42 configurations were compared on the inner training set ({r['inner_train']:,}) and validation set "
-                f"({r['validation']:,}); the selected model was refitted on the full training split ({r['train']:,}) "
-                f"and evaluated once on the untouched test set ({r['test']:,}).")
-
-    st.subheader("1 · Decision on held-out test data")
-    thr = summary["thresholds"]
-    a, b, c = st.columns(3)
-    cov_ok = HT["top10_coverage"] >= thr["coverage_min"]
-    frac_ok = HT["candidate_fraction"] <= thr["candidate_fraction_max"]
-    a.metric("Top-10 coverage vs full cosine", f"{HT['top10_coverage']:.2%}")
-    a.caption(f"Target ≥ {thr['coverage_min']:.0%} — {'met' if cov_ok else 'not met'}")
-    b.metric("Share of recruiting studies searched", f"{HT['candidate_fraction']:.2%}")
-    b.caption(f"Target ≤ {thr['candidate_fraction_max']:.0%} — {'met' if frac_ok else 'not met'}")
-    c.metric("Adopted search mode", MODE)
-    c.caption("Cluster-guided only if both targets are met")
-    st.info("Cluster-guided search had to keep at least 95% of the full-cosine top 10 while searching no more than 70% "
-            "of recruiting studies. It did not meet both targets, so the prototype uses **full cosine ranking**; "
-            "K-means remains an exploratory view. Coverage is agreement with an algorithmic baseline, not clinical accuracy.")
-
-    st.subheader("2 · Selected configuration")
-    v = summary["validation"]
-    x1, x2, x3, x4 = st.columns(4)
-    x1.metric("SVD dimensions", summary["svd_dimensions"])
-    x2.metric("Clusters (K)", summary["k"])
-    x3.metric("TF-IDF variance retained", f"{summary['explained_variance']:.2%}")
-    x4.metric("Validation top-10 coverage", f"{v['top10_coverage']:.2%}")
-    y1, y2, y3 = st.columns(3)
-    y1.metric("Validation share searched", f"{v['candidate_fraction']:.2%}")
-    y2.metric("Train silhouette", f"{HT['train_silhouette']:.4f}")
-    y3.metric("Test silhouette", f"{HT['test_silhouette']:.4f}")
-    if summary.get("configuration_source") == "presented":
-        rc = summary["rule_choice_on_this_snapshot"]
-        st.caption(f"Configuration as presented (100D, K=6, selected on the notebook's own API snapshot of 7,873 studies). "
-                   f"On this CSV snapshot ({r['prepared']:,} studies) the same weighted rule would narrowly prefer "
-                   f"{rc['svd_dimensions']}D, K={rc['k']}; the adopted search mode is full cosine either way.")
-
-    st.subheader("3 · All 42 configurations (validation)")
-    metric = st.selectbox("Colour by", ["selection_score", "validation_direct_top10_coverage",
-                                        "validation_candidate_fraction", "silhouette_validation", "explained_variance"])
-    heat = comp.copy()
-    heat["selected"] = (heat["svd_dimensions"] == summary["svd_dimensions"]) & (heat["k"] == summary["k"])
-    base = alt.Chart(heat).encode(x=alt.X("k:O", title="Clusters (K)", axis=alt.Axis(labelAngle=0)),
-                                  y=alt.Y("svd_dimensions:O", title="SVD dimensions", sort="descending"))
-    st.altair_chart((base.mark_rect().encode(color=alt.Color(f"{metric}:Q", scale=alt.Scale(scheme="tealblues")),
-                                             tooltip=["svd_dimensions", "k", alt.Tooltip(metric, format=".3f"),
-                                                      "passes_all"])
-                     + base.mark_text(fontSize=11).encode(text=alt.Text(f"{metric}:Q", format=".2f"),
-                                                          color=alt.condition("datum.selected", alt.value("#c0392b"), alt.value("#13344a"))))
-                    .properties(height=300), use_container_width=True)
-    st.caption("Selection score = 50% top-10 coverage + 20% candidate reduction + 15% SVD variance + 15% silhouette. "
-               "Red text marks the configuration used.")
-
-    st.subheader(f"4 · Supporting diagnostics at {summary['svd_dimensions']}D")
-    sel = comp[comp["svd_dimensions"] == summary["svd_dimensions"]].sort_values("k")
-    l, rr = st.columns(2)
-    l.altair_chart(alt.Chart(sel).mark_line(point=True, color="#13344a").encode(
-        x=alt.X("k:O", axis=alt.Axis(labelAngle=0)), y=alt.Y("inertia:Q", scale=alt.Scale(zero=False)))
-        .properties(title="Elbow (inertia)"), use_container_width=True)
-    sil = sel.melt(id_vars="k", value_vars=["silhouette_train", "silhouette_validation"], var_name="Set", value_name="Silhouette")
-    rr.altair_chart(alt.Chart(sil).mark_line(point=True).encode(
-        x=alt.X("k:O", axis=alt.Axis(labelAngle=0)), y="Silhouette:Q",
-        color=alt.Color("Set:N", scale=alt.Scale(range=["#1f6f8b", "#e0a526"]), legend=alt.Legend(orient="bottom")))
-        .properties(title="Silhouette: train vs validation"), use_container_width=True)
-    cov = sel.melt(id_vars="k", value_vars=["validation_direct_top10_coverage", "validation_candidate_fraction"],
-                   var_name="Measure", value_name="Fraction")
-    st.altair_chart(alt.Chart(cov).mark_line(point=True).encode(
-        x=alt.X("k:O", axis=alt.Axis(labelAngle=0)), y=alt.Y("Fraction:Q", scale=alt.Scale(domain=[0, 1])),
-        color=alt.Color("Measure:N", scale=alt.Scale(range=["#1f6f8b", "#c0392b"]), legend=alt.Legend(orient="bottom")))
-        .properties(title="Validation: top-10 coverage vs share searched"), use_container_width=True)
-    st.caption("Inertia falls smoothly with K, so the elbow does not decide K on its own. Silhouette stays low: "
-               "weak geometric separation, not a relevance score.")
-
-    st.subheader("5 · Clinical relevance (Precision@10)")
-    st.markdown("Precision@10 is **not calculated**: it needs independent clinician relevance labels. The review "
-                "template lists the top 10 held-out results for 12 queries under both methods, ready for labelling.")
-    st.download_button("Download clinician review template (CSV)", review_template.to_csv(index=False),
-                       file_name="clinician_relevance_review_template.csv")
-
-
-# ----------------------------------------------------------------------------------------
-# Page 4 — Data and preparation
-# ----------------------------------------------------------------------------------------
-elif page == "Data and preparation":
-    st.title("Data understanding and preparation")
-    st.dataframe(pd.DataFrame(prep_log, columns=["Preparation milestone", "Studies"]), hide_index=True)
-    r = summary["records"]
-    st.markdown("**model_text** = cleaned conditions + interventions + study title + brief summary, combined once "
-                "(lower-cased, whitespace normalised, 'tumour' → 'tumor'). No field is weighted or repeated. "
-                "NCT ID, status, location and eligibility stay as metadata for filters and display.")
-    split = pd.DataFrame({"Partition": ["Inner training (fit)", "Validation (model selection)", "Untouched test"],
-                          "Studies": [r["inner_train"], r["validation"], r["test"]]})
-    st.altair_chart(alt.Chart(split).mark_bar().encode(
-        x=alt.X("sum(Studies):Q", stack="normalize", title="Share of model-ready studies", axis=alt.Axis(format="%")),
-        color=alt.Color("Partition:N", sort=list(split["Partition"]),
-                        scale=alt.Scale(range=["#1f6f8b", "#7fb3c8", "#e0a526"]), legend=alt.Legend(orient="bottom")),
-        tooltip=["Partition", "Studies"]).properties(height=90, title="60 / 20 / 20 split (final model refits on train = inner + validation)"),
-        use_container_width=True)
-
-    l, rr = st.columns(2)
-    stc = T["Study Status"].value_counts().rename_axis("Status").reset_index(name="Studies")
-    l.altair_chart(alt.Chart(stc).mark_bar().encode(
-        x="Studies:Q", y=alt.Y("Status:N", sort="-x", title=None),
-        color=alt.condition(alt.datum.Status == "RECRUITING", alt.value("#1f6f8b"), alt.value("#c7d1d6")))
-        .properties(title="Status of model-ready studies"), use_container_width=True)
-    ph = T["Phase_Clean"].value_counts().rename_axis("Phase").reset_index(name="Studies")
-    rr.altair_chart(alt.Chart(ph).mark_bar(color="#13344a").encode(
-        x="Studies:Q", y=alt.Y("Phase:N", sort="-x", title=None)).properties(title="Phase"), use_container_width=True)
-    ct = T["Country_List"].explode().value_counts().head(15).rename_axis("Country").reset_index(name="Studies")
-    st.altair_chart(alt.Chart(ct).mark_bar(color="#1f6f8b").encode(
-        x="Studies:Q", y=alt.Y("Country:N", sort="-x", title=None))
-        .properties(title="Most listed site countries (a study can list several)"), use_container_width=True)
-
-
-# ----------------------------------------------------------------------------------------
-# Page 5 — About and limitations
+# Page 3 — About and limitations
 # ----------------------------------------------------------------------------------------
 else:
     st.title("About this prototype")
